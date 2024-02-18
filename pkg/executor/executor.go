@@ -30,11 +30,14 @@ func Run(owner, sourceRepo, token string) {
 	client := getGitHubClient(ctx, token)
 
 	ruleset := getter.GetRuleset(ctx, client, owner, sourceRepo)
-	repos, err := getter.GetAllReposFromOrg(ctx, client, owner)
+	// repos, err := getter.GetAllReposFromOrg(ctx, client, owner)
+	repos := make([]*github.Repository, 1)
+	repo, _, err := client.Repositories.Get(ctx, owner, "5ire-staking")
 	if err != nil {
 		log.Fatalf("Error fetching repositories: %v\n", err)
 		return
 	}
+	repos[0] = repo
 
 	setter.SetRuleset(ctx, client, owner, repos, ruleset)
 }

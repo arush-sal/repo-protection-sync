@@ -32,7 +32,7 @@ func getDefaultBranch(ctx context.Context, client *github.Client, owner, repo st
 }
 
 // getBranchProtectionRules retrieves the branch protection rules for a specific repository.
-func getBranchProtectionRules(ctx context.Context, client *github.Client, owner, repo string) (*github.Protection, error) {
+func getBranchProtection(ctx context.Context, client *github.Client, owner, repo string) (*github.Protection, error) {
 
 	branch, err := getDefaultBranch(ctx, client, owner, repo)
 	if err != nil {
@@ -48,7 +48,12 @@ func getBranchProtectionRules(ctx context.Context, client *github.Client, owner,
 
 // GetRuleset retrieves the branch protection rules for a specific repository.
 func GetRuleset(ctx context.Context, client *github.Client, owner, repo string) *github.Protection {
-	gp, err := getBranchProtectionRules(ctx, client, owner, repo)
+	gp, err := getBranchProtection(ctx, client, owner, repo)
+	// client.Repositories.GetPullRequestReviewEnforcement (ctx context.Context, owner, repo, branch string) (*PullRequestReviewsEnforcement, *Response, error)
+	// GetRequiredStatusChecks(ctx context.Context, owner, repo, branch string) (*RequiredStatusChecks, *Response, error)
+	// GetSignaturesProtectedBranch(ctx context.Context, owner, repo, branch string) (*SignaturesProtectedBranch, *Response, error)
+	// RequireSignaturesOnProtectedBranch(ctx context.Context, owner, repo, branch string, requireSignatures bool) (*Response, error)
+	//
 	if err != nil {
 		log.Fatalf("Error fetching branch protection rules: %v\n", err)
 	}

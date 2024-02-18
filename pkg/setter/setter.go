@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/arush-sal/branch-protection-sync/pkg/helpers"
 	"github.com/google/go-github/v39/github"
 )
 
@@ -57,9 +58,13 @@ func SetRuleset(ctx context.Context, client *github.Client, owner string, repos 
 				return
 			}
 
+			log.Printf("Starting branch protection sync for repo %s...", *repo.Name)
 			// Assume setBranchProtectionRules is implemented to call the GitHub API
-			err := setBranchProtectionRules(ctx, client, owner, *repo.Name,
-				*repo.DefaultBranch, convertProtectionToRequest(ruleset))
+			err := setBranchProtectionRules(ctx, client, owner, *repo.Name, *repo.DefaultBranch, convertProtectionToRequest(ruleset))
+			// GetSignaturesOnProtectedBranch
+			// RequireSignaturesOnProtectedBranch
+			// GetRequiredDeploymentsEnforcementLevel
+			//
 			if err != nil {
 				log.Fatalf("Error applying branch protection to repo %s: %v\n", *repo.Name, err)
 			} else {
@@ -94,24 +99,19 @@ func checkAndHandleRateLimit(ctx context.Context, client *github.Client) bool {
 
 // setBranchProtectionRules applies branch protection rules to a specified branch in a GitHub repository.
 func setBranchProtectionRules(ctx context.Context, client *github.Client, owner, repo, branch string, protection *github.ProtectionRequest) error {
-	protectionDetails, response, err := client.Repositories.UpdateBranchProtection(
-		ctx, owner, repo, branch, protection)
+	_, response, err := client.Repositories.UpdateBranchProtection(ctx, owner, repo, branch, protection)
 	if err != nil {
 		log.Fatalf("Error applying branch protection: %v\n", err)
 		return err
 	}
 
-	log.Printf("Branch protection details: %v\n", protectionDetails)
+	// log.Printf("Branch protection details: %v\n", protectionDetails)
 
 	// Optionally, inspect response.StatusCode to ensure it's 200 OK
 	// or handle redirections (HTTP 301, 302) if necessary.
-	if response.StatusCode != 200 {
-		log.Printf("Unexpected status code: %d\n", response.StatusCode)
-		// Handle unexpected response status code
-	}
+	// log.Println("Branch protection applied successfully.")
 
-	log.Println("Branch protection applied successfully.")
-	return nil
+	return helpers.HTTPStatusCodeCheck(response.StatusCode)
 
 }
 
@@ -126,10 +126,7 @@ func convertProtectionToRequest(protection *github.Protection) *github.Protectio
 
 	// Required status checks
 	if protection.RequiredStatusChecks != nil {
-		request.RequiredStatusChecks = &github.RequiredStatusChecks{
-			Strict:   protection.RequiredStatusChecks.Strict,
-			Contexts: protection.RequiredStatusChecks.Contexts,
-		}
+		request.RequiredStatusChecks = protection.GetRequiredStatusChecks()
 	}
 
 	// Required pull request reviews
@@ -147,17 +144,29 @@ func convertProtectionToRequest(protection *github.Protection) *github.Protectio
 					protection.RequiredPullRequestReviews.DismissalRestrictions,
 				)
 		}
+	} else {
+		request.RequiredPullRequestReviews = &github.PullRequestReviewsEnforcementRequest{}
 	}
 
 	// Enforce admin restrictions
 	if protection.EnforceAdmins != nil {
 		request.EnforceAdmins = protection.EnforceAdmins.Enabled
+	} else {
+		request.EnforceAdmins = false
 	}
 
 	// Add User, Team and Apps restrictions
 	if protection.Restrictions != nil {
 		request.Restrictions = convertProtectionRestrictionToRequest(protection.Restrictions)
+	} else {
+		request.Restrictions = &github.BranchRestrictionsRequest{}
 	}
+
+	request.RequireLinearHistory = &protection.RequireLinearHistory.Enabled
+	request.AllowForcePushes = &protection.AllowForcePushes.Enabled
+	request.AllowDeletions = &protection.AllowDeletions.Enabled
+	request.RequiredConversationResolution = &protection.RequiredConversationResolution.Enabled
+
 	return request
 }
 
@@ -172,6 +181,8 @@ func convertPRDismissalRestrictionsToRequest(dr *github.DismissalRestrictions) *
 			dru = append(dru, user.GetLogin())
 		}
 		drr.Users = &dru
+	} else {
+		drr.Users = &[]string{}
 	}
 
 	// Add Team dismissal restrictions
@@ -181,6 +192,8 @@ func convertPRDismissalRestrictionsToRequest(dr *github.DismissalRestrictions) *
 			tru = append(tru, team.GetSlug())
 		}
 		drr.Teams = &tru
+	} else {
+		drr.Teams = &[]string{}
 	}
 
 	return drr
@@ -199,6 +212,8 @@ func convertProtectionRestrictionToRequest(br *github.BranchRestrictions) *githu
 		}
 
 		brr.Users = ur
+	} else {
+		brr.Users = []string{}
 	}
 
 	// Add Team restrictions
@@ -209,6 +224,8 @@ func convertProtectionRestrictionToRequest(br *github.BranchRestrictions) *githu
 		}
 
 		brr.Teams = tr
+	} else {
+		brr.Teams = []string{}
 	}
 
 	// Add App restrictions
@@ -219,6 +236,8 @@ func convertProtectionRestrictionToRequest(br *github.BranchRestrictions) *githu
 		}
 
 		brr.Apps = ar
+	} else {
+		brr.Apps = []string{}
 	}
 
 	return brr
