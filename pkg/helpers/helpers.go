@@ -16,8 +16,11 @@ limitations under the License.
 package helpers
 
 import (
+	"context"
 	"errors"
 	"log"
+
+	"github.com/google/go-github/v59/github"
 )
 
 func HTTPStatusCodeCheck(statuscode int) error {
@@ -85,4 +88,20 @@ func HTTPStatusCodeCheck(statuscode int) error {
 	}
 
 	return nil
+}
+
+func DoesRulesetExist(ctx context.Context, client *github.Client, owner, repo, branch, sourceRuleset string) bool {
+	targetRulesets, response, err := client.Repositories.GetAllRulesets(ctx, owner, repo, false)
+	switch {
+	case err != nil:
+		log.Fatalf("Error fetching branch ruleset: %v\n", err)
+	case HTTPStatusCodeCheck(response.StatusCode) != nil:
+		log.Fatalf("Error fetching branch ruleset: %v\n", HTTPStatusCodeCheck(response.StatusCode))
+	}
+	for _, targetRuleset := range targetRulesets {
+		if sourceRuleset == targetRuleset.Name {
+			return true
+		}
+	}
+	return false
 }

@@ -19,9 +19,9 @@ import (
 	"context"
 	"log"
 
-	"github.com/arush-sal/branch-protection-sync/pkg/getter"
-	"github.com/arush-sal/branch-protection-sync/pkg/setter"
-	"github.com/google/go-github/v39/github"
+	"github.com/arush-sal/repo-protection-sync/pkg/getter"
+	"github.com/arush-sal/repo-protection-sync/pkg/setter"
+	"github.com/google/go-github/v59/github"
 	"golang.org/x/oauth2"
 )
 
@@ -29,7 +29,7 @@ func Run(owner, sourceRepo, token string) {
 	ctx := context.Background()
 	client := getGitHubClient(ctx, token)
 
-	ruleset := getter.GetRuleset(ctx, client, owner, sourceRepo)
+	ruleset := getter.GetRepoProtections(ctx, client, owner, sourceRepo)
 	// repos, err := getter.GetAllReposFromOrg(ctx, client, owner)
 	repos := make([]*github.Repository, 1)
 	repo, _, err := client.Repositories.Get(ctx, owner, "5ire-staking")

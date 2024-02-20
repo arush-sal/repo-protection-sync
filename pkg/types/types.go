@@ -1,5 +1,5 @@
 /*
-Copyright © 2024 Arush Salil
+# Copyright © 2024 Arush Salil
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,10 +13,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package main
+package types
 
-import "github.com/arush-sal/repo-protection-sync/cmd"
+import "github.com/google/go-github/v59/github"
 
-func main() {
-	cmd.Execute()
+type RepoProtection struct {
+	BranchProtection *github.Protection
+	Rulesets         []*github.Ruleset
 }

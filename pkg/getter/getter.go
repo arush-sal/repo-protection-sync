@@ -19,7 +19,9 @@ import (
 	"context"
 	"log"
 
-	"github.com/google/go-github/v39/github"
+	"github.com/arush-sal/repo-protection-sync/pkg/helpers"
+	"github.com/arush-sal/repo-protection-sync/pkg/types"
+	"github.com/google/go-github/v59/github"
 )
 
 // getDefaultBranch retrieves the default branch of a repository.
@@ -38,26 +40,40 @@ func getBranchProtection(ctx context.Context, client *github.Client, owner, repo
 	if err != nil {
 		return nil, err
 	}
-
-	protection, _, err := client.Repositories.GetBranchProtection(ctx, owner, repo, branch)
+	protection, response, err := client.Repositories.GetBranchProtection(ctx, owner, repo, branch)
 	if err != nil {
 		return nil, err
 	}
-	return protection, nil
+
+	return protection, helpers.HTTPStatusCodeCheck(response.StatusCode)
 }
 
-// GetRuleset retrieves the branch protection rules for a specific repository.
-func GetRuleset(ctx context.Context, client *github.Client, owner, repo string) *github.Protection {
+// GetRepoProtections retrieves the branch protection rules and ruleset to be applied.
+func GetRepoProtections(ctx context.Context, client *github.Client, owner, repo string) *types.RepoProtection {
+	// Get the branch protection rules for the source repository
+	log.Printf("Fetching branch protection rules from %s/%s...\n", owner, repo)
+	rp := new(types.RepoProtection)
 	gp, err := getBranchProtection(ctx, client, owner, repo)
 	// client.Repositories.GetPullRequestReviewEnforcement (ctx context.Context, owner, repo, branch string) (*PullRequestReviewsEnforcement, *Response, error)
 	// GetRequiredStatusChecks(ctx context.Context, owner, repo, branch string) (*RequiredStatusChecks, *Response, error)
-	// GetSignaturesProtectedBranch(ctx context.Context, owner, repo, branch string) (*SignaturesProtectedBranch, *Response, error)
-	// RequireSignaturesOnProtectedBranch(ctx context.Context, owner, repo, branch string, requireSignatures bool) (*Response, error)
-	//
 	if err != nil {
 		log.Fatalf("Error fetching branch protection rules: %v\n", err)
 	}
-	return gp
+	rp.BranchProtection = gp
+	rp.Rulesets = GetRulesets(ctx, client, owner, repo)
+	return rp
+}
+
+// getRuleset retrieves the branch protection rules for a specific repository.
+func GetRulesets(ctx context.Context, client *github.Client, owner, repo string) []*github.Ruleset {
+	rulesets, response, err := client.Repositories.GetAllRulesets(ctx, owner, repo, false)
+	switch {
+	case err != nil:
+		log.Fatalf("Error fetching branch ruleset: %v\n", err)
+	case helpers.HTTPStatusCodeCheck(response.StatusCode) != nil:
+		log.Fatalf("Error fetching branch ruleset: %v\n", helpers.HTTPStatusCodeCheck(response.StatusCode))
+	}
+	return rulesets
 }
 
 // GetAllReposFromOrg fetches all repositories for the specified GitHub organization.
@@ -83,4 +99,17 @@ func GetAllReposFromOrg(ctx context.Context, client *github.Client, org string) 
 	}
 
 	return allRepos, nil
+}
+
+func getBranchSignedCommitStatus(ctx context.Context, client *github.Client, owner, repo, branch string) bool {
+	// GetSignaturesOnProtectedBranch
+	signedCommits, _, err := client.Repositories.GetSignaturesProtectedBranch(ctx, owner, repo, branch)
+	if err != nil {
+		log.Fatalf("Error fetching branch signed commits check: %v", err)
+	}
+
+	if !*signedCommits.Enabled {
+		return false
+	}
+	return true
 }

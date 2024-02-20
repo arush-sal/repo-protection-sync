@@ -18,7 +18,7 @@ package cmd
 import (
 	"os"
 
-	"github.com/arush-sal/branch-protection-sync/pkg/executor"
+	"github.com/arush-sal/repo-protection-sync/pkg/executor"
 	"github.com/spf13/cobra"
 )
 
@@ -26,7 +26,7 @@ var owner, repo, githubToken string
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "branch-protection-sync",
+	Use:   "repo-protection-sync",
 	Short: "Applies a GitHub branch protection ruleset from a source repository to all repositories in an organization",
 	Run: func(cmd *cobra.Command, args []string) {
 		if owner == "" || repo == "" || githubToken == "" {

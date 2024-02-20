@@ -21,13 +21,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arush-sal/branch-protection-sync/pkg/helpers"
-	"github.com/google/go-github/v39/github"
+	"github.com/arush-sal/repo-protection-sync/pkg/helpers"
+	"github.com/arush-sal/repo-protection-sync/pkg/types"
+	"github.com/google/go-github/v59/github"
 )
+
+var signedCommits bool
 
 // SetRuleset sets the branch protection rules for the list of repositories provided
 // under a particular GitHub user or organization.
-func SetRuleset(ctx context.Context, client *github.Client, owner string, repos []*github.Repository, ruleset *github.Protection) {
+func SetRuleset(ctx context.Context, client *github.Client, owner string, repos []*github.Repository, protections *types.RepoProtection) {
 
 	// Calculate the number of semaphores as one tenth of the total number of repos
 	// with a minimum of 1
@@ -59,18 +62,18 @@ func SetRuleset(ctx context.Context, client *github.Client, owner string, repos 
 			}
 
 			log.Printf("Starting branch protection sync for repo %s...", *repo.Name)
-			// Assume setBranchProtectionRules is implemented to call the GitHub API
-			err := setBranchProtectionRules(ctx, client, owner, *repo.Name, *repo.DefaultBranch, convertProtectionToRequest(ruleset))
-			// GetSignaturesOnProtectedBranch
-			// RequireSignaturesOnProtectedBranch
-			// GetRequiredDeploymentsEnforcementLevel
-			//
+
+			err := setBranchProtectionRules(ctx, client, owner, *repo.Name, *repo.DefaultBranch, convertProtectionToRequest(protections.BranchProtection))
 			if err != nil {
 				log.Fatalf("Error applying branch protection to repo %s: %v\n", *repo.Name, err)
-			} else {
-				log.Printf("Branch protection applied to repo %s successfully\n",
-					*repo.Name)
 			}
+
+			err = setRulesSets(ctx, client, owner, *repo.Name, *repo.DefaultBranch, protections.Rulesets)
+			if err != nil {
+				log.Fatalf("Error applying ruleset to repo %s: %v\n", *repo.Name, err)
+			}
+
+			log.Printf("Branch protection and Rulesets applied to repo %s successfully\n", *repo.Name)
 		}(repo)
 	}
 
@@ -81,7 +84,7 @@ func SetRuleset(ctx context.Context, client *github.Client, owner string, repos 
 // in case if the rate limiting exceeds it handles the particular scenario by
 // adding a wait time before the next request is made.
 func checkAndHandleRateLimit(ctx context.Context, client *github.Client) bool {
-	rateLimits, _, err := client.RateLimits(ctx)
+	rateLimits, _, err := client.RateLimit.Get(ctx)
 	if err != nil {
 		log.Fatalf("Failed to fetch rate limit: %v\n", err)
 		return false
@@ -97,14 +100,42 @@ func checkAndHandleRateLimit(ctx context.Context, client *github.Client) bool {
 	return true
 }
 
+func setRulesSets(ctx context.Context, client *github.Client, owner, repo, branch string, rulesets []*github.Ruleset) error {
+	var err error
+	for _, ruleset := range rulesets {
+		if helpers.DoesRulesetExist(ctx, client, owner, repo, branch, ruleset.Name) {
+			_, response, err := client.Repositories.UpdateRuleset(ctx, owner, repo, ruleset.GetID(), ruleset)
+			switch {
+			case err != nil:
+				log.Fatalf("Error updating branch ruleset: %v\n", err)
+			case helpers.HTTPStatusCodeCheck(response.StatusCode) != nil:
+				log.Fatalf("Error updating branch ruleset: %v\n", helpers.HTTPStatusCodeCheck(response.StatusCode))
+			}
+		} else {
+			_, response, err := client.Repositories.CreateRuleset(ctx, owner, repo, ruleset)
+			switch {
+			case err != nil:
+				log.Fatalf("Error creating branch ruleset: %v\n", err)
+			case helpers.HTTPStatusCodeCheck(response.StatusCode) != nil:
+				log.Fatalf("Error creating branch ruleset: %v\n", helpers.HTTPStatusCodeCheck(response.StatusCode))
+			}
+		}
+	}
+	return err
+}
+
 // setBranchProtectionRules applies branch protection rules to a specified branch in a GitHub repository.
+// can't find an API for "Require deployments to succeed before merging" check
 func setBranchProtectionRules(ctx context.Context, client *github.Client, owner, repo, branch string, protection *github.ProtectionRequest) error {
 	_, response, err := client.Repositories.UpdateBranchProtection(ctx, owner, repo, branch, protection)
 	if err != nil {
 		log.Fatalf("Error applying branch protection: %v\n", err)
 		return err
 	}
-
+	// RequireSignaturesOnProtectedBranch
+	if signedCommits {
+		client.Repositories.RequireSignaturesOnProtectedBranch(ctx, owner, repo, branch)
+	}
 	// log.Printf("Branch protection details: %v\n", protectionDetails)
 
 	// Optionally, inspect response.StatusCode to ensure it's 200 OK
@@ -166,6 +197,10 @@ func convertProtectionToRequest(protection *github.Protection) *github.Protectio
 	request.AllowForcePushes = &protection.AllowForcePushes.Enabled
 	request.AllowDeletions = &protection.AllowDeletions.Enabled
 	request.RequiredConversationResolution = &protection.RequiredConversationResolution.Enabled
+	// RequireSignaturesOnProtectedBranch
+	if *protection.RequiredSignatures.Enabled {
+		signedCommits = true
+	}
 
 	return request
 }
